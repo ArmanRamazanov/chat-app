@@ -5,6 +5,7 @@ import { isTokenPayload } from "@/types/register.types";
 import UserModel from "@/dbModels/User";
 import MessageModel from "@/dbModels/Message";
 import RoomModel from "./dbModels/Room";
+import { Types } from "mongoose";
 
 let io: Server;
 
@@ -12,10 +13,8 @@ export function initializeSocket(socketServer: Server) {
   io = socketServer;
 
   io.use(async (socket, next) => {
-    console.log("Socket middleware");
     const token = socket.handshake.auth.token;
     try {
-      console.log("Socket token is:", token);
       if (!token) {
         return next(
           new customError(401, "The user is not authenticated", null),
@@ -52,11 +51,13 @@ export function initializeSocket(socketServer: Server) {
         socket.data.userId,
         {
           isOnline: true,
+          lastSeen: new Date(),
         },
         { new: true },
       );
+
+      socket.data.username = user?.username;
     } catch (err) {
-      console.log(err);
       return socket.disconnect();
     }
 
@@ -68,10 +69,35 @@ export function initializeSocket(socketServer: Server) {
       socket.join(roomId.toString());
     });
 
-    socket.on("send-message", async (message, roomId) => {
+    socket.on("send-message", async (content, roomId) => {
       try {
-        const msg = await MessageModel.create(message);
-        await RoomModel.findByIdAndUpdate(roomId, { lastMessage: msg._id });
+        if (!content || !roomId) {
+          socket.emit("error", {
+            message: "The content and roomId are required",
+          });
+          return;
+        }
+        if (!Types.ObjectId.isValid(roomId)) {
+          socket.emit("error", { message: "invalid roomId" });
+          return;
+        }
+        const room = await RoomModel.findOne({
+          _id: roomId,
+          members: socket.data.userId,
+        });
+        const msg = await MessageModel.create(content);
+
+        if (!room) {
+          socket.emit("error", {
+            message: "The user does not have an access to the room",
+          });
+          return;
+        }
+
+        room.lastActivity = new Date();
+        room.lastMessage = msg._id;
+
+        await room.save();
 
         const msgPopulated = await msg.populate(
           "senderId",
@@ -82,7 +108,7 @@ export function initializeSocket(socketServer: Server) {
 
         const activeUsers = socketsInRoom
           .map((s) => s.data.userId)
-          .filter((id) => id !== message.senderId);
+          .filter((id) => id !== content.senderId);
 
         if (activeUsers.length) {
           await msg.updateOne({
@@ -90,19 +116,18 @@ export function initializeSocket(socketServer: Server) {
           });
         }
 
-        io.to(roomId).emit("receive-message", {
+        io.to(roomId).emit("new-message", {
           ...msgPopulated.toObject(),
           readBy: [...msg.readBy, ...activeUsers],
         });
 
         socket.emit("update-room");
       } catch (err) {
-        console.log(err);
         socket.emit("error", { message: "Something went wrong" });
       }
     });
 
-    socket.on("open-room", async ({ roomId }) => {
+    socket.on("message-read", async ({ roomId }) => {
       try {
         const userId = socket.data.userId;
         await MessageModel.updateMany(
@@ -114,6 +139,13 @@ export function initializeSocket(socketServer: Server) {
       } catch {
         socket.emit("error", { message: "Something went wrong" });
       }
+    });
+
+    socket.on("typing", ({ roomId, isTyping }) => {
+      socket.to(roomId).emit("user-typing", {
+        userId: socket.data.userId,
+        isTyping,
+      });
     });
 
     socket.on("edit-message", async ({ msgId, content, roomId }) => {
@@ -162,12 +194,14 @@ export function initializeSocket(socketServer: Server) {
     });
 
     socket.on("disconnect", async () => {
-      await UserModel.findByIdAndUpdate(socket.data.userId, {
+      const user = await UserModel.findByIdAndUpdate(socket.data.userId, {
         isOnline: false,
+        lastSeen: new Date(),
       });
 
       io.emit("user-offline", {
         userId: socket.data.userId,
+        username: user?.username,
         lastSeen: new Date(),
       });
     });

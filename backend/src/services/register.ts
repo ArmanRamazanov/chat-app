@@ -9,21 +9,27 @@ import db from "@/config/db";
 import jwt from "jsonwebtoken";
 import { generateAccessToken } from "@/utils/tokenGeneration";
 import { customError } from "@/utils/customError";
-import type { Message } from "@/types/message.types";
+import type {
+  createRoomInput,
+  IMessage,
+  IRoom,
+  MessageDTO,
+} from "@/types/message.types";
 
 export async function registerService(
   input: registerInput,
-): Promise<userWithoutPassword> {
-  const user = await db.register(input);
-  return user;
+): Promise<{ accessToken: string; user: userWithoutPassword }> {
+  const response = await db.register(input);
+  return response;
 }
 
-export async function loginService(
-  input: loginInput,
-): Promise<{ accessToken: string; refreshToken: string }> {
-  console.log("Login service here");
-  const { accessToken, refreshToken } = await db.login(input);
-  return { accessToken, refreshToken };
+export async function loginService(input: loginInput): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  user: userWithoutPassword;
+}> {
+  const response = await db.login(input);
+  return response;
 }
 
 export async function newTokenGeneration(
@@ -31,8 +37,6 @@ export async function newTokenGeneration(
 ): Promise<{ accessToken: string }> {
   try {
     const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET!);
-
-    console.log("refreshToken decoded: ", decoded);
 
     if (!isTokenPayload(decoded)) {
       throw new customError(403, "The token is invalid", null);
@@ -54,7 +58,7 @@ export async function getMe(userId: string): Promise<User> {
 export async function getRoomMessages(
   userId: string | undefined,
   roomId: string,
-): Promise<Message[]> {
+): Promise<MessageDTO[]> {
   try {
     if (!userId) {
       throw new customError(401, "The user is not authenticated", null);
@@ -64,4 +68,33 @@ export async function getRoomMessages(
   }
   const messages = await db.getMessages(userId, roomId);
   return messages;
+}
+
+export async function getRooms(userId: string | undefined): Promise<IRoom[]> {
+  try {
+    if (!userId) {
+      throw new customError(401, "The user is not authenticated", null);
+    }
+
+    const rooms = await db.getRooms(userId);
+    return rooms;
+  } catch (err) {
+    throw err;
+  }
+}
+
+export async function createRoom(
+  input: createRoomInput,
+  userId: string | undefined,
+): Promise<IRoom> {
+  try {
+    if (!userId) {
+      throw new customError(401, "The user is not authenticated", null);
+    }
+
+    const room = await db.createRoom(input, userId);
+    return room;
+  } catch (err) {
+    throw err;
+  }
 }

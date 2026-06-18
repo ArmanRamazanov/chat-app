@@ -1,6 +1,8 @@
 import {
+  createRoomController,
   getMeController,
   getRoomMessagesController,
+  getRoomsController,
   loginController,
   registerController,
   tokenGenerationController,
@@ -17,6 +19,8 @@ router.post("/login", validateLogin, loginController);
 router.post("/token", tokenGenerationController);
 router.get("/me", verifyToken, getMeController);
 router.get("/:roomId/messages", verifyToken, getRoomMessagesController);
+router.get("/rooms", verifyToken, getRoomsController);
+router.post("/rooms", verifyToken, createRoomController);
 router.get("/health", (req: Request, res: Response) => {
   res.json({
     success: true,

@@ -1,6 +1,8 @@
 import {
+  createRoom,
   getMe,
   getRoomMessages,
+  getRooms,
   loginService,
   newTokenGeneration,
   registerService,
@@ -8,17 +10,18 @@ import {
 import type { User, userWithoutPassword } from "@/types/register.types";
 import type { Request, Response, NextFunction } from "express";
 import type { ApiResponse } from "@/types/index.types";
-import type { MessageDTO } from "@/types/message.types";
+import type { IRoom, MessageDTO } from "@/types/message.types";
 
 export async function registerController(
   req: Request,
-  res: Response<ApiResponse<userWithoutPassword>>,
+  res: Response<
+    ApiResponse<{ accessToken: string; user: userWithoutPassword }>
+  >,
   next: NextFunction,
 ) {
   try {
     const input = req.body;
 
-    console.log(req.body);
     const result = await registerService(input);
 
     return res.json({
@@ -33,12 +36,14 @@ export async function registerController(
 
 export async function loginController(
   req: Request,
-  res: Response<ApiResponse<string>>,
+  res: Response<
+    ApiResponse<{ accessToken: string; user: userWithoutPassword }>
+  >,
   next: NextFunction,
 ) {
   try {
     const input = req.body;
-    const { accessToken, refreshToken } = await loginService(input);
+    const { accessToken, refreshToken, user } = await loginService(input);
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
@@ -47,7 +52,7 @@ export async function loginController(
 
     return res.json({
       success: true,
-      data: accessToken,
+      data: { accessToken, user },
       message: null,
     });
   } catch (err) {
@@ -126,6 +131,45 @@ export async function getRoomMessagesController(
     res.json({
       success: true,
       data: messages,
+      message: null,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getRoomsController(
+  req: Request,
+  res: Response<ApiResponse<IRoom[]>>,
+  next: NextFunction,
+) {
+  try {
+    const userId = req.userId;
+
+    const rooms = await getRooms(userId);
+
+    res.json({
+      success: true,
+      data: rooms,
+      message: null,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createRoomController(
+  req: Request,
+  res: Response<ApiResponse<IRoom>>,
+  next: NextFunction,
+) {
+  try {
+    const userId = req.userId;
+
+    const room = await createRoom(req.body, userId);
+    res.json({
+      success: true,
+      data: room,
       message: null,
     });
   } catch (err) {

@@ -1,3 +1,4 @@
 {
-  "snyk.advanced.autoSelectOrganization": true
+  "snyk.advanced.autoSelectOrganization": true,
+  "snyk.advanced.organization": "e36e954f-adb3-4cd4-8e78-c5d519b2e702"
 }

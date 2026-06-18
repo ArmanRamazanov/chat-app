@@ -11,13 +11,15 @@ import {
   generateAccessToken,
   generateRefreshToken,
 } from "@/utils/tokenGeneration";
-import mongoose, { MongooseError } from "mongoose";
+import mongoose, { MongooseError, Types } from "mongoose";
 import RoomModel from "@/models/Room";
 import MessageModel from "@/models/Message";
-import type { MessageDTO } from "@/types/message.types";
+import type { createRoomInput, IRoom, MessageDTO } from "@/types/message.types";
 
 class RegistrationDB {
-  async register(input: registerInput): Promise<userWithoutPassword> {
+  async register(
+    input: registerInput,
+  ): Promise<{ accessToken: string; user: userWithoutPassword }> {
     const { username, password, firstName } = input;
 
     const newUser = {
@@ -34,7 +36,8 @@ class RegistrationDB {
       const user = await UserModel.create(newUser);
 
       const { password, ...userWithoutPassword } = user.toObject();
-      return userWithoutPassword;
+      const accessToken = generateAccessToken(user.id, user.role);
+      return { accessToken, user: userWithoutPassword };
     } catch (err: any) {
       if ("code" in err) {
         if (err.code === 11000) {
@@ -65,9 +68,11 @@ class RegistrationDB {
     }
   }
 
-  async login(
-    input: loginInput,
-  ): Promise<{ accessToken: string; refreshToken: string }> {
+  async login(input: loginInput): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    user: userWithoutPassword;
+  }> {
     const { username, password } = input;
     const user = await UserModel.findOne({ username: username });
 
@@ -83,7 +88,8 @@ class RegistrationDB {
       if (await bcrypt.compare(password, user.password)) {
         const accessToken = generateAccessToken(user.id, user.role);
         const refreshToken = generateRefreshToken(user.id, user.role);
-        return { accessToken, refreshToken };
+        const { password, ...userWithoutPassword } = user.toObject();
+        return { accessToken, refreshToken, user: userWithoutPassword };
       } else {
         throw new customError(
           400,
@@ -144,7 +150,38 @@ class RegistrationDB {
       return messages.map((message) => ({
         ...message.toObject(),
         roomId: message.roomId.toString(),
+        readBy: message.readBy.map((message) => message.toString()),
       }));
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getRooms(userId: string): Promise<IRoom[]> {
+    try {
+      const rooms = await RoomModel.find({ members: userId });
+
+      return rooms;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async createRoom(input: createRoomInput, userId: string): Promise<IRoom> {
+    try {
+      const { name, isDirect } = input;
+      const room: IRoom = {
+        name,
+        members: [new Types.ObjectId(userId)],
+        admin: new Types.ObjectId(userId),
+        lastMessage: null,
+        lastActivity: new Date(),
+        isDirect,
+      };
+
+      const response = await RoomModel.create(room);
+
+      return response;
     } catch (err) {
       throw err;
     }
